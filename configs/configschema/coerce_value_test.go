@@ -1,6 +1,7 @@
 package configschema
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zclconf/go-cty/cty"
@@ -10,15 +11,19 @@ import (
 
 func TestCoerceValue(t *testing.T) {
 	tests := map[string]struct {
-		Schema    *Block
-		Input     cty.Value
-		WantValue cty.Value
-		WantErr   string
+		Schema             *Block
+		Input              cty.Value
+		WantValue          cty.Value
+		WantErr            string
+		ValidateErr        string
+		CoercedValidateErr string
 	}{
 		"empty schema and value": {
 			&Block{},
 			cty.EmptyObjectVal,
 			cty.EmptyObjectVal,
+			``,
+			``,
 			``,
 		},
 		"attribute present": {
@@ -37,6 +42,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.StringVal("true"),
 			}),
 			``,
+			`attribute "foo" expected type cty.String, got cty.Bool`,
+			``,
 		},
 		"single block present": {
 			&Block{
@@ -54,6 +61,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.EmptyObjectVal,
 			}),
 			``,
+			``,
+			``,
 		},
 		"single block wrong type": {
 			&Block{
@@ -69,6 +78,8 @@ func TestCoerceValue(t *testing.T) {
 			}),
 			cty.DynamicVal,
 			`.foo: an object is required`,
+			``,
+			``,
 		},
 		"list block with one item": {
 			&Block{
@@ -85,6 +96,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.ListVal([]cty.Value{cty.EmptyObjectVal}),
 			}),
+			``,
+			``,
 			``,
 		},
 		"set block with one item": {
@@ -103,6 +116,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.SetVal([]cty.Value{cty.EmptyObjectVal}),
 			}),
 			``,
+			`expected set for block "foo", got cty.ListVal([]cty.Value{cty.EmptyObjectVal})`,
+			``,
 		},
 		"map block with one item": {
 			&Block{
@@ -119,6 +134,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.MapVal(map[string]cty.Value{"foo": cty.EmptyObjectVal}),
 			}),
+			``,
+			``,
 			``,
 		},
 		"list block with one item having an attribute": {
@@ -148,6 +165,8 @@ func TestCoerceValue(t *testing.T) {
 				})}),
 			}),
 			``,
+			``,
+			``,
 		},
 		"list block with one item having a missing attribute": {
 			&Block{
@@ -170,6 +189,8 @@ func TestCoerceValue(t *testing.T) {
 			}),
 			cty.DynamicVal,
 			`.foo[0]: attribute "bar" is required`,
+			``,
+			``,
 		},
 		"list block with one item having an extraneous attribute": {
 			&Block{
@@ -187,6 +208,8 @@ func TestCoerceValue(t *testing.T) {
 			}),
 			cty.DynamicVal,
 			`.foo[0]: unexpected attribute "bar"`,
+			``,
+			``,
 		},
 		"missing optional attribute": {
 			&Block{
@@ -201,6 +224,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.NullVal(cty.String),
 			}),
+			``,
+			``,
 			``,
 		},
 		"missing optional single block": {
@@ -217,6 +242,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.NullVal(cty.EmptyObject),
 			}),
 			``,
+			`value must be an object, got cty.NilType`,
+			``,
 		},
 		"missing optional list block": {
 			&Block{
@@ -231,6 +258,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.ListValEmpty(cty.EmptyObject),
 			}),
+			``,
+			`expected list for block "foo", got cty.NilVal`,
 			``,
 		},
 		"missing optional set block": {
@@ -247,6 +276,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.SetValEmpty(cty.EmptyObject),
 			}),
 			``,
+			`expected set for block "foo", got cty.NilVal`,
+			``,
 		},
 		"missing optional map block": {
 			&Block{
@@ -262,6 +293,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo": cty.MapValEmpty(cty.EmptyObject),
 			}),
 			``,
+			`expected map or object for block "foo", got cty.NilVal`,
+			``,
 		},
 		"missing required attribute": {
 			&Block{
@@ -275,6 +308,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.EmptyObjectVal,
 			cty.DynamicVal,
 			`attribute "foo" is required`,
+			``,
+			``,
 		},
 		"missing required single block": {
 			&Block{
@@ -290,6 +325,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.EmptyObjectVal,
 			cty.DynamicVal,
 			`attribute "foo" is required`,
+			``,
+			``,
 		},
 		"missing required list block": {
 			&Block{
@@ -304,6 +341,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.EmptyObjectVal,
 			cty.DynamicVal,
 			`attribute "foo" is required`,
+			``,
+			``,
 		},
 		"missing required set block": {
 			&Block{
@@ -318,6 +357,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.EmptyObjectVal,
 			cty.DynamicVal,
 			`attribute "foo" is required`,
+			``,
+			``,
 		},
 		"unknown nested list": {
 			&Block{
@@ -344,6 +385,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo":  cty.UnknownVal(cty.List(cty.EmptyObject)),
 			}),
 			"",
+			"",
+			``,
 		},
 		"unknowns in nested list": {
 			&Block{
@@ -377,6 +420,84 @@ func TestCoerceValue(t *testing.T) {
 				}),
 			}),
 			"",
+			`insufficient items for attribute "foo"; must have at least 2`,
+			``,
+		},
+		"less than min items": {
+			&Block{
+				BlockTypes: map[string]*NestedBlock{
+					"foo": {
+						Block: Block{
+							Attributes: map[string]*Attribute{
+								"attr": {
+									Type:     cty.String,
+									Required: true,
+								},
+							},
+						},
+						Nesting:  NestingList,
+						MinItems: 2,
+					},
+				},
+			},
+			cty.ObjectVal(map[string]cty.Value{
+				"foo": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+				}),
+			}),
+			cty.ObjectVal(map[string]cty.Value{
+				"foo": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+				}),
+			}),
+			"",
+			`insufficient items for attribute "foo"; must have at least 2`,
+			``,
+		},
+		"more than max items": {
+			&Block{
+				BlockTypes: map[string]*NestedBlock{
+					"foo": {
+						Block: Block{
+							Attributes: map[string]*Attribute{
+								"attr": {
+									Type:     cty.String,
+									Required: true,
+								},
+							},
+						},
+						Nesting:  NestingList,
+						MaxItems: 1,
+					},
+				},
+			},
+			cty.ObjectVal(map[string]cty.Value{
+				"foo": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+				}),
+			}),
+			cty.ObjectVal(map[string]cty.Value{
+				"foo": cty.ListVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+					cty.ObjectVal(map[string]cty.Value{
+						"attr": cty.StringVal(""),
+					}),
+				}),
+			}),
+			"",
+			`too many items for attribute "foo"; cannot have more than 1`,
+			``,
 		},
 		"unknown nested set": {
 			&Block{
@@ -402,6 +523,8 @@ func TestCoerceValue(t *testing.T) {
 				"attr": cty.StringVal("test"),
 				"foo":  cty.UnknownVal(cty.Set(cty.EmptyObject)),
 			}),
+			"",
+			"",
 			"",
 		},
 		"unknown nested map": {
@@ -429,6 +552,8 @@ func TestCoerceValue(t *testing.T) {
 				"foo":  cty.UnknownVal(cty.Map(cty.EmptyObject)),
 			}),
 			"",
+			"",
+			"",
 		},
 		"extraneous attribute": {
 			&Block{},
@@ -437,6 +562,8 @@ func TestCoerceValue(t *testing.T) {
 			}),
 			cty.DynamicVal,
 			`unexpected attribute "foo"`,
+			``,
+			``,
 		},
 		"wrong attribute type": {
 			&Block{
@@ -452,6 +579,8 @@ func TestCoerceValue(t *testing.T) {
 			}),
 			cty.DynamicVal,
 			`.foo: number required`,
+			``,
+			``,
 		},
 		"unset computed value": {
 			&Block{
@@ -467,6 +596,8 @@ func TestCoerceValue(t *testing.T) {
 			cty.ObjectVal(map[string]cty.Value{
 				"foo": cty.NullVal(cty.String),
 			}),
+			``,
+			``,
 			``,
 		},
 		"dynamic value attributes": {
@@ -514,6 +645,8 @@ func TestCoerceValue(t *testing.T) {
 					}),
 				}),
 			}),
+			``,
+			``,
 			``,
 		},
 		"dynamic attributes in map": {
@@ -563,6 +696,8 @@ func TestCoerceValue(t *testing.T) {
 				}),
 			}),
 			``,
+			``,
+			``,
 		},
 	}
 
@@ -584,6 +719,40 @@ func TestCoerceValue(t *testing.T) {
 
 			if !gotValue.RawEquals(test.WantValue) {
 				t.Errorf("wrong result\ninput: %#v\ngot:   %#v\nwant:  %#v", test.Input, gotValue, test.WantValue)
+			}
+
+			validateErr := test.Schema.Validate(test.Input)
+			if validateErr == nil {
+				if test.ValidateErr != "" {
+					t.Fatalf("validate succeeded; want error: %q", test.ValidateErr)
+				}
+
+			} else {
+				if test.ValidateErr == "" {
+					t.Fatal("unexpected error", validateErr)
+				}
+				if !strings.Contains(validateErr.Error(), test.ValidateErr) {
+					t.Fatalf("wrong validate error\ngot:  %s\nwant: %s", validateErr, test.ValidateErr)
+				}
+			}
+
+			// is there was no error validating the input, make sure the
+			// coerced value also validates
+			if test.WantErr == "" && test.ValidateErr == "" {
+				validateErr := test.Schema.Validate(gotValue)
+
+				if validateErr == nil {
+					if test.CoercedValidateErr != "" {
+						t.Fatalf("validate succeeded; want error: %q", test.CoercedValidateErr)
+					}
+				} else {
+					if test.CoercedValidateErr == "" {
+						t.Fatal("unexpected error:", validateErr)
+					}
+					if !strings.Contains(validateErr.Error(), test.ValidateErr) {
+						t.Fatalf("wrong validate error\ngot:  %s\nwant: %s", validateErr, test.ValidateErr)
+					}
+				}
 			}
 		})
 	}
